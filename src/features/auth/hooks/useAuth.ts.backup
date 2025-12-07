@@ -1,0 +1,152 @@
+/**
+ * Authentication Hook
+ * Provides login, signup, and logout functionality
+ */
+import { useState, useCallback } from "react";
+import apiClient from "../../../core/services/apiClient";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { STORAGE_KEYS } from "../../../core/constants";
+
+export interface AuthCredentials {
+  username: string;
+  password: string;
+}
+
+export interface AuthResponse {
+  accessToken: string;
+  refreshToken: string;
+  user: {
+    id: string;
+    username: string;
+    email: string;
+  };
+}
+
+export interface AuthState {
+  isLoading: boolean;
+  isError: boolean;
+  error: string | null;
+  user: AuthResponse["user"] | null;
+}
+
+export const useAuth = () => {
+  const [state, setState] = useState<AuthState>({
+    isLoading: false,
+    isError: false,
+    error: null,
+    user: null,
+  });
+
+  const login = useCallback(async (credentials: AuthCredentials) => {
+    setState({ isLoading: true, isError: false, error: null, user: null });
+    try {
+      const response = await apiClient.post<AuthResponse>("/auth/login", {
+        username: credentials.username,
+        password: credentials.password,
+      });
+
+      const { accessToken, refreshToken, user } = response.data;
+
+      // Store tokens
+      await AsyncStorage.multiSet([
+        [STORAGE_KEYS.ACCESS_TOKEN, accessToken],
+        [STORAGE_KEYS.REFRESH_TOKEN, refreshToken],
+        [STORAGE_KEYS.USER_DATA, JSON.stringify(user)],
+      ]);
+
+      setState({
+        isLoading: false,
+        isError: false,
+        error: null,
+        user,
+      });
+
+      return { success: true, user };
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || err.message || "Login failed";
+      setState({
+        isLoading: false,
+        isError: true,
+        error: errorMessage,
+        user: null,
+      });
+      return { success: false, error: errorMessage };
+    }
+  }, []);
+
+  const signUp = useCallback(async (credentials: AuthCredentials & { email: string }) => {
+    setState({ isLoading: true, isError: false, error: null, user: null });
+    try {
+      const response = await apiClient.post<AuthResponse>("/auth/signup", {
+        username: credentials.username,
+        email: credentials.email,
+        password: credentials.password,
+      });
+
+      const { accessToken, refreshToken, user } = response.data;
+
+      await AsyncStorage.multiSet([
+        [STORAGE_KEYS.ACCESS_TOKEN, accessToken],
+        [STORAGE_KEYS.REFRESH_TOKEN, refreshToken],
+        [STORAGE_KEYS.USER_DATA, JSON.stringify(user)],
+      ]);
+
+      setState({
+        isLoading: false,
+        isError: false,
+        error: null,
+        user,
+      });
+
+      return { success: true, user };
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || err.message || "Sign up failed";
+      setState({
+        isLoading: false,
+        isError: true,
+        error: errorMessage,
+        user: null,
+      });
+      return { success: false, error: errorMessage };
+    }
+  }, []);
+
+  const logout = useCallback(async () => {
+    setState({ isLoading: true, isError: false, error: null, user: null });
+    try {
+      await apiClient.post("/auth/logout");
+      await AsyncStorage.multiRemove([
+        STORAGE_KEYS.ACCESS_TOKEN,
+        STORAGE_KEYS.REFRESH_TOKEN,
+        STORAGE_KEYS.USER_DATA,
+      ]);
+
+      setState({
+        isLoading: false,
+        isError: false,
+        error: null,
+        user: null,
+      });
+
+      return { success: true };
+    } catch (err: any) {
+      const errorMessage = err.message || "Logout failed";
+      setState({
+        isLoading: false,
+        isError: true,
+        error: errorMessage,
+        user: null,
+      });
+      return { success: false, error: errorMessage };
+    }
+  }, []);
+
+  return {
+    ...state,
+    login,
+    signUp,
+    logout,
+  };
+};
+
+export default useAuth;
